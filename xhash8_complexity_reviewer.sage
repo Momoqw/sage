@@ -1,12 +1,13 @@
-# XHash8 fiber-based complexity evaluator for CICO-2, CICO-3, and CICO-4
-# All returned complexities are log2 numbers of base-field operations.
+# Complexity evaluation for the XHash8 CICO-2, CICO-3, and CICO-4 attacks.
+# The cost decomposition and degree bounds follow Section 4.4.
+# All reported values are base-2 logarithms of field-operation counts.
 
 import math
 
 OMEGA = 2.8
 N_AUX = 24
 
-# (n_x, D, nu_0)
+# Parameters (n_x, D, nu_0) used for the three CICO instances.
 PARAMETERS = {
     2: (3, 7009493581824, 6),
     3: (5, 2**39 + 2**23, 6),
@@ -33,7 +34,7 @@ def log2_sum(values):
 
 
 def log2_M(d):
-    # M(d) = d log d log log d
+    # Multiplication cost M(d) from Equation (1).
     ld = log2_int(d)
     l1 = max(ld, 1.0)
     l2 = max(math.log2(l1), 1.0)
@@ -41,8 +42,7 @@ def log2_M(d):
 
 
 def log2_C(s, d_x, n_x):
-    # Proposition 2:
-    # C(s,d_x) = S_s * s * log(S_s) * log log(S_s),
+    # Reduction cost C(s,d_x) from Proposition 2, with
     # S_s = (d_x+1)^{n_x} * 13^s.
     if s <= 0:
         return float("-inf")
@@ -51,16 +51,14 @@ def log2_C(s, d_x, n_x):
 
 
 def log2_T_build(n_x, nu_0):
-    # T_build = 336 * C(24, 7^{nu_0}).
+    # Section 4.4: T_build = 336 * C(24, 7^{nu_0}).
     return math.log2(336) + log2_C(N_AUX, 7 ** nu_0, n_x)
 
 
 def log2_T_aux(k, n_x, D, nu_0, omega=OMEGA):
-    # d_x(i) = min(2D-2, 7^{nu_0+i})
-    #
-    # For each of the k constrained output polynomials, the i-th auxiliary
-    # resultant contributes 7^omega coefficient multiplications, and each
-    # multiplication is followed by reduction in the remaining auxiliaries.
+    # At the i-th auxiliary elimination, use
+    # d_x(i) = min(2D-2, 7^{nu_0+i}).  The resultant and the subsequent
+    # reduction give T_aux,res and T_aux,red, respectively.
     resultant_terms = []
     reduction_terms = []
 
@@ -86,15 +84,13 @@ def log2_T_inp(k, n_x, D, omega=OMEGA):
     d = 2 * D - 1
     log_ordinary = omega * log2_int(2 * D - 2)
 
-    # Product tree for D factors.
-    # Let E = 2^{ceil(log2 D)}. Padding to E leaves gives E-1
-    # multiplication nodes in the binary product tree.
-    # Use integer arithmetic to avoid floating-point ceil(log2(D)).
+    # A resultant with x_i^D-c_i is evaluated from Proposition 1 using
+    # a binary product tree with at most 2^{ceil(log2 D)}-1 multiplications.
     ceil_log2_D = (int(D) - 1).bit_length()
     product_tree_mults = 2 ** ceil_log2_D - 1
     log_fiber = log2_int(product_tree_mults)
 
-    # First input elimination.
+    # Elimination of the first symbolic input.
     n_pairwise = math.comb(k, 2)
     first_coefficient = log2_sum([
         log2_int(n_pairwise) + log_ordinary,
@@ -105,7 +101,7 @@ def log2_T_inp(k, n_x, D, omega=OMEGA):
         first_coefficient + log2_M(d ** (n_x - 1))
     ]
 
-    # Subsequent input eliminations.
+    # Elimination of the remaining symbolic inputs.
     n_ordinary = math.comb(k + 1, 2) - 1
     later_coefficient = log2_sum([
         log2_int(n_ordinary) + log_ordinary,
@@ -121,8 +117,8 @@ def log2_T_inp(k, n_x, D, omega=OMEGA):
 
 
 def log2_T_uni(k, D):
-    # After input elimination there are k(k+1)/2 retained univariate
-    # constraints, together with x_1^D-c_1.
+    # The final GCD uses the retained univariate constraints together
+    # with x_1^D-c_1.
     n_gcd_polynomials = math.comb(k + 1, 2) + 1
     ld = math.log2(D)
     return (
@@ -135,10 +131,9 @@ def log2_T_uni(k, D):
 
 def xhash8_complexity(k, omega=OMEGA, verbose=True):
     """
-    k = 2, 3, or 4.
+    Compute the Section 4.4 complexity terms for CICO-k, with k in {2,3,4}.
 
-    Returns log2(T_build), log2(T_aux), log2(T_inp),
-    log2(T_uni), and log2(T_total).
+    The returned costs are base-2 logarithms of field-operation counts.
     """
     if k not in PARAMETERS:
         raise ValueError("k must be one of 2, 3, 4.")
