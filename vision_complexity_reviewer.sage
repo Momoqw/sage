@@ -1,7 +1,7 @@
 import math
 
 # ======================================================================
-#  cost primitives   (Section 2)
+# Arithmetic costs from Section 2
 # ======================================================================
 
 def lg(x):
@@ -14,14 +14,14 @@ def lg(x):
     return math.log2(x)
 
 def lgM(d):
-    r"""log2 of M(d) = d log d loglog d"""
+    r"""Return log2 M(d), with M(d) = d log d log log d as in Equation (1)."""
     ld = lg(d)
     l1 = max(ld, 1.0)
     l2 = max(math.log2(l1), 1.0)
     return ld + math.log2(l1) + math.log2(l2)
 
 def lgU(d, n):
-    r"""log2 of U(d) = d log d (log d + log q loglog d),  q = 2^n"""
+    r"""Return log2 U(d) for q = 2^n, using the bound in Equation (2)."""
     ld = lg(d)
     l1 = max(ld, 1.0)
     l2 = max(math.log2(l1), 1.0)
@@ -35,15 +35,14 @@ def lse(vals):
     return m + math.log2(sum(2.0 ** (v - m) for v in vals))
 
 def C1(d, e, delta, B):
-    r"""C1(d,e,delta,B) = d^3 + d M(4 (e + delta d/4 + 1)^2 B)"""
+    r"""Cost C1(d,e,delta,B) for reducing one variable, as in Appendix A.1."""
     d, e, B = int(d), int(e), int(B)
     t1 = 3 * lg(d) if d > 0 else float('-inf')
     t2 = lg(d) + lgM(4 * (e + delta * d // 4 + 1) ** 2 * B)
     return lse([t1, t2])
 
 def C2(d, e, delta, B):
-    r"""C2(d,e,delta,B) = 2d^3 + d M(4(d+1)(e+delta d/4+1)^2 B)
-                                + d M(16 (e + delta d/2 + 1)^2 B)"""
+    r"""Cost C2(d,e,delta,B) for reducing both variables, as in Appendix A.1."""
     d, e, B = int(d), int(e), int(B)
     t1 = 1 + 3 * lg(d) if d > 0 else float('-inf')
     t2 = lg(d) + lgM(4 * (d + 1) * (e + delta * d // 4 + 1) ** 2 * B)
@@ -51,17 +50,15 @@ def C2(d, e, delta, B):
     return lse([t1, t2, t3])
 
 # ======================================================================
-#  ENGINE (A) : Appendix A.1 substitution sums
+# Reduction costs from Appendix A.1
 # ======================================================================
 
 def A1_odd(N):
     r"""
-    Literal evaluation of the two displayed sums of Appendix A.1.
-    Returns (log2 T_sub_out, log2 T_sub_in, log2 T_sub, #terms_out, #terms_in).
+    Evaluate the Appendix A.1 reduction costs for odd N.
 
-    Coefficient-array factors follow the closing paragraph of A.1:
-      substituted variable -> 4, substituted intermediate state -> 16,
-      intermediate state of degree 12 -> 13^2, the two central variables -> (c+1)^2.
+    The returned values are the backward, forward, and total reduction costs,
+    followed by the numbers of terms in the two sums.
     """
     if N % 2 == 0:
         raise ValueError("A1_odd requires odd N.")
@@ -73,14 +70,13 @@ def A1_odd(N):
     def cen(c):
         return (c + 1) ** 2
 
-    # N = 3 is the smallest odd instance.  The general input-side display in
-    # Appendix A.1 has no post-u2 substitution in this boundary case.
+    # The case N = 3 is evaluated directly, as specified in Appendix A.1.
     if N == 3:
         T = [C2(8, 0, 4, 1), C1(12, 76, 4, 1)]
         S = [C1(4, 8, 8, 1)]
         return lse(T), lse(S), lse([lse(T), lse(S)]), len(T), len(S)
 
-    # ---------------- output side ----------------
+    # Backward (output-side) reduction.
     T = [C2(8 * 4 ** j, 0, 8, 16 ** j) for j in range(0, h - 2)]
     T.append(C2(8 * 4 ** (h - 2), 0, 4, 16 ** (h - 2)))
 
@@ -102,7 +98,7 @@ def A1_odd(N):
         c.append(mid + 2 * (40 * 4 ** (h - s - 2) - 4))
     T.append(C1(12, 4 * c[h - 1] + 12, 4, 1))
 
-    # ---------------- input side ----------------
+    # Forward (input-side) reduction.
     S = [C1(4, 8, 8, 1)]
     S += [C2(4 ** j, 0, 8, 4 * 16 ** (j - 2)) for j in range(2, h)]
 
@@ -135,18 +131,17 @@ def A1_odd(N):
 
 def A1_even(N):
     r"""
-    Literal evaluation of the even-N substitution costs in Appendix A.1.
-    The paper states the even-N case as modifications of the odd-N sums.
-    Returns (log2 T_sub_out, log2 T_sub_in, log2 T_sub, #terms_out, #terms_in).
+    Evaluate the Appendix A.1 reduction costs for even N.
+
+    The returned values are the backward, forward, and total reduction costs,
+    followed by the numbers of terms in the two sums.
     """
     if N % 2 == 1:
         raise ValueError("A1_even requires even N.")
     if N < 2:
         raise ValueError("The Vision MITM model is evaluated here for N >= 2.")
 
-    # N = 2 is the smallest even instance.  There is no noncentral output-side
-    # intermediate state.  On the input side, after Res_{v2}, only u2 is substituted
-    # through the central relation before Res_{u2}.
+    # The case N = 2 is evaluated directly, as specified in Appendix A.1.
     if N == 2:
         T = []
         S = [C1(4, 4, 4, 1)]
@@ -158,9 +153,9 @@ def A1_even(N):
     def cen(c):
         return (c + 1) ** 2
 
-    # ---------------- output side ----------------
-    # Appendix A.1, even N: all output-side relations toward the central pair
-    # are ordinary, so every terminal delta is 8.
+    # Backward (output-side) reduction.
+    # For even N, the backward chain reaches the middle through a relation
+    # with delta = 8.
     T = [C2(8 * 4 ** j, 0, 8, 16 ** j) for j in range(0, ell - 1)]
 
     c = [None, 2 * 4 ** ell]                              # c^out_1
@@ -183,9 +178,8 @@ def A1_even(N):
         c.append(mid + 4 * (40 * 4 ** (ell - s - 2) - 4))
     T.append(C1(12, 4 * c[ell - 1] + 24, 8, 1))
 
-    # ---------------- input side ----------------
-    # The input side has ell noncentral intermediate states.  The last relation toward
-    # the retained central pair is the central relation, with delta = 4.
+    # Forward (input-side) reduction.
+    # The final relation of the forward chain is the middle relation, with delta = 4.
     S = [C1(4, 8, 8, 1)]
     S += [C2(4 ** j, 0, 8, 4 * 16 ** (j - 2)) for j in range(2, ell)]
     S.append(C2(4 ** ell, 0, 4, 4 * 16 ** (ell - 2)))
@@ -220,17 +214,15 @@ def A1_even(N):
     return lse(T), lse(S), lse([lse(T), lse(S)]), len(T), len(S)
 
 # ======================================================================
-#  ENGINE (B) : step-by-step simulation, both parities
+# Degree propagation and intermediate resultant costs
 # ======================================================================
 
 class Side(object):
     r"""
-    One side (input or output) of the MITM elimination.
+    Degree data for one elimination chain.
 
-    L        : number of noncentral intermediate states, indexed 1..L from the boundary
-               towards the centre
-    delta[i] : 8 for an ordinary link relation, 4 for the central one
-    deg0     : initial partial degrees of f_in / f_out
+    The states are indexed from the boundary toward the middle.  The value
+    delta[i] is 8 for a regular relation and 4 for a middle relation.
     """
 
     def __init__(self, L, delta, deg0, c_res=17):
@@ -257,7 +249,7 @@ class Side(object):
         return b
 
     def sweep(self, start):
-        r"""substitution sweep from pair `start` towards the centre (Lemma 1)"""
+        r"""Apply the quartic reductions from state `start` toward the middle."""
         for i in range(start, self.L + 1):
             m = self.nv[i]
             if m == 0:
@@ -277,7 +269,7 @@ class Side(object):
             self.deg[i] = 3
 
     def resultant(self, s):
-        r"""eliminate one variable of pair s (Lemma 2 + Appendix A.2)"""
+        r"""Apply one intermediate resultant at state s using Lemma 2."""
         t = min(self.deg[s], 3)
         adjc = (s == self.L)
         dfx = self.delta[s]
@@ -300,22 +292,23 @@ class Side(object):
 
 def run_sides(N, c_res=17):
     r"""
-    Returns two 5-tuples
-        (log2 T_sub, log2 T_int, d*(G), #substitutions, #resultants)
-    for the output side and the input side respectively.
+    Compute the backward and forward reduction and resultant costs.
+
+    For each chain, also return the final middle-state degree bound and the
+    numbers of reductions and resultants.
     """
     rho = 2 * ((N + 1) // 2)
     h = rho // 2
     odd = (N % 2 == 1)
 
-    # ---------------- output side ----------------
+    # Backward (output-side) reduction.
     Lo = h - 1
     if Lo <= 0:
         out = (float('-inf'), float('-inf'), 8, 0, 0)
     else:
         delo = dict((i, 8) for i in range(1, Lo + 1))
         if odd:
-            delo[Lo] = 4                             # Eq. (5)
+            delo[Lo] = 4                             # Middle relation.
         Sd = Side(Lo, delo, {1: 8}, c_res)
         Sd.sweep(1)
         for s in range(1, Lo + 1):
@@ -326,11 +319,11 @@ def run_sides(N, c_res=17):
                 Sd.sweep(s + 1)
         out = (lse(Sd.T_sub), lse(Sd.T_res_iter), Sd.cdeg, Sd.nsub, Sd.nres)
 
-    # ---------------- input side ----------------
+    # Forward (input-side) reduction.
     Li = h - 1 if odd else h
     deli = dict((i, 8) for i in range(1, Li + 1))
     if not odd:
-        deli[Li] = 4                                 # Eq. (6)
+        deli[Li] = 4                                 # Middle relation.
     Td = Side(Li, deli, {1: 1}, c_res)
     Td.resultant(1)
     Td.sweep(1)
@@ -344,11 +337,11 @@ def run_sides(N, c_res=17):
     return out, inn
 
 # ======================================================================
-#  complexity evaluation
+# Complexity evaluation
 # ======================================================================
 
-# Paper parameters used for the 128-bit Vision instance.
-# For the 256-bit instance, change FIELD_DEGREE to 256.
+# Parameters for the 128-bit Vision instances in Table 1.
+# Set FIELD_DEGREE = 256 for the corresponding 256-bit instances.
 FIELD_DEGREE = 128
 OMEGA = 2.0
 C_RES = 17
@@ -356,24 +349,23 @@ C_RES = 17
 
 def vision_complexity(N):
     r"""
-    Return the logarithms base 2 of the five complexity terms in the paper:
-        T_sub, T_res_iter, T_res_biv, T_uni, T_total.
+    Compute the five complexity terms of Section 3.3 for N attacked rounds.
 
-    The only input is the attacked round number N.
+    All returned values are base-2 logarithms of field-operation counts.
     """
     n = FIELD_DEGREE
 
     (T_sub_out_sim, T_res_iter_out, d_out, _, _), \
     (T_sub_in_sim, T_res_iter_in, d_in, _, _) = run_sides(N, C_RES)
 
-    # T_sub is evaluated from the exact Appendix A.1 sums.
+    # Reduction cost from the explicit sums in Appendix A.1.
     A1 = A1_odd(N) if N % 2 else A1_even(N)
     T_sub = A1[2]
 
-    # Intermediate resultants.
+    # Intermediate resultant cost.
     T_res_iter = lse([T_res_iter_out, T_res_iter_in])
 
-    # Final bivariate resultant.
+    # Final bivariate resultant cost.
     d_P = 2 * max(d_out, d_in)
     d_Q = 2 * min(d_out, d_in)
     log_d_P = lg(d_P)
@@ -387,11 +379,11 @@ def vision_complexity(N):
         + math.log2(math.log2(log_d_P))
     ])
 
-    # Univariate root finding.
+    # Univariate root-finding cost.
     d_uni = d_P * d_Q
     T_uni = lgU(d_uni, n)
 
-    # Total arithmetic complexity.
+    # Total complexity.
     T_total = lse([T_sub, T_res_iter, T_res_biv, T_uni])
 
     return {
@@ -405,7 +397,7 @@ def vision_complexity(N):
 
 
 def report(N):
-    r"""Print the five complexity terms for one round number N."""
+    r"""Print the five complexity terms for a fixed number of attacked rounds."""
     r = vision_complexity(N)
     print("N = %d" % N)
     print("log2 T_sub      = %.3f" % r["T_sub"])
@@ -416,7 +408,7 @@ def report(N):
 
 
 def reviewer_table():
-    r"""Print the 10--15 round values used for reviewer verification."""
+    r"""Print the complexity values for N = 10,...,15."""
     print(" N   log2 T_sub   log2 T_res,iter   log2 T_res,biv   log2 T_uni   log2 T_total")
     for N in range(10, 16):
         r = vision_complexity(N)
